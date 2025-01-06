@@ -6,14 +6,9 @@ FROM $BASE_IMAGE
 # See: https://docs.docker.com/engine/reference/builder/#understand-how-arg-and-from-interact
 ARG PYTHON_WHEEL_VERSION
 ARG PYTHON_VERSION_PATH
-ARG TF_LINUX_WHEEL_VERSION
 ARG TORCH_LINUX_WHEEL_VERSION
 ARG TORCH_VERSION
-ARG TENSORFLOW_VERSION
-ARG TF_LIBTPU_VERSION
-ARG JAX_VERSION
 ARG TORCHVISION_VERSION
-ARG TORCHTEXT_VERSION
 ARG TORCHAUDIO_VERSION
 
 ENV ISTPUVM=1
@@ -57,28 +52,23 @@ RUN apt-get update && apt-get install ffmpeg libsm6 libxext6  -y
 
 # Packages needed by the Notebook editor
 
-# Additional useful packages should be added here
+# Additional useful packages should be added in the requirements.txt
 
-RUN pip install tensorflow_hub https://storage.googleapis.com/cloud-tpu-tpuvm-artifacts/tensorflow/tf-${TENSORFLOW_VERSION}/tensorflow-${TENSORFLOW_VERSION}-${PYTHON_WHEEL_VERSION}-${PYTHON_WHEEL_VERSION}-${TF_LINUX_WHEEL_VERSION}.whl tensorflow-probability tensorflow-io \
-    torch~=${TORCH_VERSION} https://storage.googleapis.com/pytorch-xla-releases/wheels/tpuvm/torch_xla-${TORCH_VERSION}+libtpu-${PYTHON_WHEEL_VERSION}-${PYTHON_WHEEL_VERSION}-${TORCH_LINUX_WHEEL_VERSION}.whl torchvision==${TORCHVISION_VERSION} torchtext==${TORCHTEXT_VERSION} torchaudio==${TORCHAUDIO_VERSION} \
-    jax[tpu]==${JAX_VERSION} -f https://storage.googleapis.com/jax-releases/libtpu_releases.html trax flax optax git+https://github.com/deepmind/dm-haiku jraph distrax \
-    papermill jupyterlab python-lsp-server[all] "jupyter-lsp==1.5.1" \
-    pandas matplotlib opencv-python-headless librosa accelerate diffusers scikit-learn transformers \
-    seaborn timm albumentations einops pyarrow fastparquet opencv-python \
-    "keras>3" keras-cv keras-nlp \
-    kagglehub && \
+# Bring in the requirements.txt and replace variables in it:
+RUN apt-get install -y gettext
+ADD tpu/requirements.txt /kaggle_requirements.txt
+RUN envsubst < /kaggle_requirements.txt > /requirements.txt
+
+# Install uv and then install the requirements:
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+RUN export PATH="${HOME}/.local/bin:${PATH}" && uv pip install --system -r /requirements.txt --prerelease=allow --find-links https://storage.googleapis.com/jax-releases/libtpu_releases.html && \
     /tmp/clean-layer.sh
-
-# Tensorflow libtpu:
-RUN curl --output /usr/local/lib/python3.10/site-packages/libtpu/libtpu.so https://storage.googleapis.com/cloud-tpu-tpuvm-artifacts/libtpu/${TF_LIBTPU_VERSION}/libtpu.so
+ENV PATH="${HOME}/.local/bin:${PATH}"
 
 # Kaggle Model Hub patches:
 ADD patches/kaggle_module_resolver.py /usr/local/lib/${PYTHON_VERSION_PATH}/site-packages/tensorflow_hub/kaggle_module_resolver.py
 RUN sed -i '/from tensorflow_hub import uncompressed_module_resolver/a from tensorflow_hub import kaggle_module_resolver' /usr/local/lib/${PYTHON_VERSION_PATH}/site-packages/tensorflow_hub/config.py
 RUN sed -i '/_install_default_resolvers()/a \ \ registry.resolver.add_implementation(kaggle_module_resolver.KaggleFileResolver())' /usr/local/lib/${PYTHON_VERSION_PATH}/site-packages/tensorflow_hub/config.py
-
-# Monkey-patch the default TPU to the local (TPU VM).
-RUN sed -i 's/tpu=None,/tpu="local",/' /usr/local/lib/${PYTHON_VERSION_PATH}/site-packages/tensorflow/python/distribute/cluster_resolver/tpu/tpu_cluster_resolver.py
 
 # Set these env vars so that they don't produce errs calling the metadata server to load them:
 ENV TPU_ACCELERATOR_TYPE=v3-8
@@ -93,7 +83,6 @@ LABEL build-date=$BUILD_DATE
 ENV GIT_COMMIT=${GIT_COMMIT}
 ENV BUILD_DATE=${BUILD_DATE}
 
-LABEL tensorflow-version=$TENSORFLOW_VERSION
 LABEL kaggle-lang=python
 
 # Correlate current release with the git hash inside the kernel editor by running `!cat /etc/git_commit`.

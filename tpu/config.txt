@@ -1,19 +1,12 @@
 BASE_IMAGE=python:3.10
 PYTHON_WHEEL_VERSION=cp310
 PYTHON_VERSION_PATH=python3.10
-# gsutil ls gs://cloud-tpu-tpuvm-artifacts/tensorflow
-# https://cloud.google.com/tpu/docs/supported-tpu-configurations#libtpu_versions
-TENSORFLOW_VERSION=2.16.1
-TF_LIBTPU_VERSION=1.10.1
 TF_LINUX_WHEEL_VERSION=manylinux_2_17_x86_64.manylinux2014_x86_64
-JAX_VERSION=0.4.23
-# gsutil ls gs://pytorch-xla-releases/wheels/tpuvm/* | grep libtpu | grep -v -E ".*rc[0-9].*"
+# gsutil ls gs://pytorch-xla-releases/wheels/tpuvm/* | grep libtpu | grep torch_xla | grep -v -E ".*rc[0-9].*" | sed 's/.*torch_xla-\(.*\)+libtpu.*/\1/' | sort -rV
 # Supports nightly
-TORCH_VERSION=2.3.0
+TORCH_VERSION=2.5.0
 # https://github.com/pytorch/audio supports nightly
-TORCHAUDIO_VERSION=2.3.0
-# https://github.com/pytorch/text supports main
-TORCHTEXT_VERSION=0.18.0
+TORCHAUDIO_VERSION=2.5.0
 # https://github.com/pytorch/vision supports nightly
-TORCHVISION_VERSION=0.18.0
+TORCHVISION_VERSION=0.20.0
 TORCH_LINUX_WHEEL_VERSION=manylinux_2_28_x86_64
