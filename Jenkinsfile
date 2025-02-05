@@ -22,28 +22,7 @@ pipeline {
 
   stages {
     stage('Pre-build Packages from Source') {
-      parallel {
-        stage('torch') {
-          options {
-            timeout(time: 300, unit: 'MINUTES')
-          }
-          steps {
-            sh '''#!/bin/bash
-              set -exo pipefail
-              source config.txt
-              cd packages/
-              ./build_package --base-image $BASE_IMAGE_REPO/$GPU_BASE_IMAGE_NAME:$BASE_IMAGE_TAG \
-                --package torch \
-                --version $TORCH_VERSION \
-                --build-arg TORCHAUDIO_VERSION=$TORCHAUDIO_VERSION \
-                --build-arg TORCHTEXT_VERSION=$TORCHTEXT_VERSION \
-                --build-arg TORCHVISION_VERSION=$TORCHVISION_VERSION \
-                --build-arg CUDA_MAJOR_VERSION=$CUDA_MAJOR_VERSION \
-                --build-arg CUDA_MINOR_VERSION=$CUDA_MINOR_VERSION \
-                --push
-            '''
-          }
-        }
+      stages {
         stage('lightgbm') {
           options {
             timeout(time: 10, unit: 'MINUTES')
@@ -53,7 +32,7 @@ pipeline {
               set -exo pipefail
               source config.txt
               cd packages/
-              ./build_package --base-image $BASE_IMAGE_REPO/$GPU_BASE_IMAGE_NAME:$BASE_IMAGE_TAG \
+              ./build_package --base-image $BASE_IMAGE:$BASE_IMAGE_TAG \
                 --package lightgbm \
                 --version $LIGHTGBM_VERSION \
                 --build-arg CUDA_MAJOR_VERSION=$CUDA_MAJOR_VERSION \
@@ -62,26 +41,9 @@ pipeline {
             '''
           }
         }
-        stage('jaxlib') {
-          options {
-            timeout(time: 300, unit: 'MINUTES')
-          }
-          steps {
-            sh '''#!/bin/bash
-              set -exo pipefail
-              source config.txt
-              cd packages/
-              ./build_package --base-image $BASE_IMAGE_REPO/$GPU_BASE_IMAGE_NAME:$BASE_IMAGE_TAG \
-                --package jaxlib \
-                --version $JAX_VERSION \
-                --build-arg CUDA_MAJOR_VERSION=$CUDA_MAJOR_VERSION \
-                --build-arg CUDA_MINOR_VERSION=$CUDA_MINOR_VERSION \
-                --push
-            '''
-          }
-        }
       }
     }
+
     stage('Build/Test/Diff') {
       parallel {
         stage('CPU') {
@@ -97,22 +59,6 @@ pipeline {
                   ./build | ts
                   ./push ${PRETEST_TAG}
                 '''
-              }
-            }
-            stage('Test CPU Image') {
-              options {
-                timeout(time: 15, unit: 'MINUTES')
-              }
-              steps {
-                retry(2) {
-                  sh '''#!/bin/bash
-                    set -exo pipefail
-
-                    date
-                    docker pull gcr.io/kaggle-images/python:${PRETEST_TAG}
-                    ./test --image gcr.io/kaggle-images/python:${PRETEST_TAG}
-                  '''
-                }
               }
             }
             stage('Diff CPU image') {
@@ -151,44 +97,6 @@ pipeline {
                 '''
               }
             }
-            stage('Test GPU Image') {
-              stages {
-                stage('Test on P100') {
-                  agent { label 'ephemeral-linux-gpu' }
-                  options {
-                    timeout(time: 40, unit: 'MINUTES')
-                  }
-                  steps {
-                    retry(2) {
-                      sh '''#!/bin/bash
-                        set -exo pipefail
-
-                        date
-                        docker pull gcr.io/kaggle-private-byod/python:${PRETEST_TAG}
-                        ./test --gpu --image gcr.io/kaggle-private-byod/python:${PRETEST_TAG}
-                      '''
-                    }
-                  }
-                }
-                stage('Test on T4x2') {
-                  agent { label 'ephemeral-linux-gpu-t4x2' }
-                  options {
-                    timeout(time: 60, unit: 'MINUTES')
-                  }
-                  steps {
-                    retry(2) {
-                      sh '''#!/bin/bash
-                        set -exo pipefail
-
-                        date
-                        docker pull gcr.io/kaggle-private-byod/python:${PRETEST_TAG}
-                        ./test --gpu --image gcr.io/kaggle-private-byod/python:${PRETEST_TAG}
-                      '''
-                    }
-                  }
-                }
-              }
-            }
             stage('Diff GPU Image') {
               steps {
                 sh '''#!/bin/bash
@@ -202,6 +110,7 @@ pipeline {
           }
         }
         stage('TPU VM') {
+          agent { label 'ephemeral-linux' }
           stages {
             stage('Build TPU VM Image') {
               options {
@@ -225,6 +134,61 @@ pipeline {
                 ./diff --tpu --target gcr.io/kaggle-private-byod/python-tpuvm:${PRETEST_TAG}
               '''
               }
+            }
+          }
+        }
+      }
+    }
+
+    stage('Test') {
+      parallel {
+        stage('Test CPU Image') {
+          options {
+            timeout(time: 15, unit: 'MINUTES')
+          }
+          steps {
+            retry(2) {
+              sh '''#!/bin/bash
+                set -exo pipefail
+
+                date
+                docker pull gcr.io/kaggle-images/python:${PRETEST_TAG}
+                ./test --image gcr.io/kaggle-images/python:${PRETEST_TAG}
+              '''
+            }
+          }
+        }
+        stage('Test on P100') {
+          agent { label 'ephemeral-linux-gpu' }
+          options {
+            timeout(time: 40, unit: 'MINUTES')
+          }
+          steps {
+            retry(2) {
+              sh '''#!/bin/bash
+                set -exo pipefail
+
+                date
+                docker pull gcr.io/kaggle-private-byod/python:${PRETEST_TAG}
+                ./test --gpu --image gcr.io/kaggle-private-byod/python:${PRETEST_TAG}
+              '''
+            }
+          }
+        }
+        stage('Test on T4x2') {
+          agent { label 'ephemeral-linux-gpu-t4x2' }
+          options {
+            timeout(time: 60, unit: 'MINUTES')
+          }
+          steps {
+            retry(2) {
+              sh '''#!/bin/bash
+                set -exo pipefail
+
+                date
+                docker pull gcr.io/kaggle-private-byod/python:${PRETEST_TAG}
+                ./test --gpu --image gcr.io/kaggle-private-byod/python:${PRETEST_TAG}
+              '''
             }
           }
         }
