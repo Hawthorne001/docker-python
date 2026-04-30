@@ -14,5 +14,3 @@ class TestTsFresh(unittest.TestCase):
         })
         extracted_features = extract_features(ts, column_id='id', column_sort='time', n_jobs=1)
         self.assertEqual(2, len(extracted_features))
-
-
